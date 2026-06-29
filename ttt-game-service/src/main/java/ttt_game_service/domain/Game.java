@@ -29,8 +29,13 @@ public class Game implements Aggregate<String>{
 	private Optional<UserId> currentTurn;
 	
 	private List<GameObserver> observers; /* observers of game events */
+	private List<GameEvent> uncommittedEvents;
 	
 	public Game(String id) {
+		this(id, true);
+	}	
+	
+	private Game(String id, boolean recordCreation) {
 		this.id = id;
 		board = new GameBoard(id+"-board");
 
@@ -39,8 +44,21 @@ public class Game implements Aggregate<String>{
 		currentTurn = Optional.empty();		
 		winner = Optional.empty();
 		state = GameState.WAITING_FOR_PLAYERS;
-		observers = new ArrayList<>();		
-	}	
+		observers = new ArrayList<>();
+		uncommittedEvents = new ArrayList<>();
+		if (recordCreation) {
+			recordThat(new GameCreated(id));
+		}
+	}
+
+	public static Game rehydrate(String id, List<GameEvent> events) {
+		var game = new Game(id, false);
+		for (var event: events) {
+			game.apply(event);
+		}
+		game.clearUncommittedEvents();
+		return game;
+	}
 	
 	public String getId() {
 		return id;
@@ -61,11 +79,7 @@ public class Game implements Aggregate<String>{
 			throw new InvalidJoinException();
 		} 
 		
-		if (symbol.equals(TTTSymbol.X)) {
-			playerCross = Optional.of(userId);
-		} else {
-			playerCircle = Optional.of(userId);
-		}
+		recordThat(new PlayerJoined(id, userId.id(), symbol.toString()));
 	}
 	
 	
@@ -78,9 +92,7 @@ public class Game implements Aggregate<String>{
 	 */
 	public void startGame() {
 		logger.info("start game");
-		state = GameState.STARTED;
-		currentTurn = playerCross;
-		notifyGameEvent(new GameStarted(id));				
+		recordThat(new GameStarted(id));
 	}
 	
 	/**
@@ -99,7 +111,8 @@ public class Game implements Aggregate<String>{
 	 * @return
 	 */
 	public String getCurrentTurn() {
-		if (currentTurn == playerCross) {
+		if (currentTurn.isPresent() && playerCross.isPresent() &&
+				currentTurn.get().id().equals(playerCross.get().id())) {
 			return "X";
 		} else {
 			return "O";
@@ -172,20 +185,16 @@ public class Game implements Aggregate<String>{
 			var gridSymbol = userId.id().equals(playerCross.get().id()) ?
 						TTTSymbol.X : TTTSymbol.O;
 			
-			board.newMove(gridSymbol, x, y);
-			notifyGameEvent(new NewMove(id, gridSymbol.toString(), x, y));				
+			recordThat(new NewMove(id, gridSymbol.toString(), x, y));				
 
 			/* check state */ 
 			
-			currentTurn = (currentTurn == playerCross) ? playerCircle : playerCross;
 			var optWin = board.checkWinner();
 			if (optWin.isPresent()) {
-				winner = Optional.of(getPlayerUsingSymbol(optWin.get()));
-				state = GameState.FINISHED;
-				notifyGameEvent(new GameEnded(id, Optional.of(winner.get().id())));				
+				var winnerUser = getPlayerUsingSymbol(optWin.get());
+				recordThat(new GameEnded(id, Optional.of(winnerUser.id())));				
 			} else if (board.isTie()) {
-				state = GameState.FINISHED;
-				notifyGameEvent(new GameEnded(id, Optional.empty()));				
+				recordThat(new GameEnded(id, Optional.empty()));				
 			}				
 		} else {
 			throw new InvalidMoveException();			
@@ -201,7 +210,68 @@ public class Game implements Aggregate<String>{
 	public void addGameObserver(GameObserver observer) {
 		observers.add(observer);
 	}
+
+	public List<GameEvent> getUncommittedEvents() {
+		return List.copyOf(uncommittedEvents);
+	}
+
+	public void clearUncommittedEvents() {
+		uncommittedEvents.clear();
+	}
 	
+	private void recordThat(GameEvent event) {
+		apply(event);
+		uncommittedEvents.add(event);
+		notifyGameEvent(event);
+	}
+
+	private void apply(GameEvent event) {
+		if (event instanceof GameCreated) {
+			/* Initial state is already set by the constructor. */
+		} else if (event instanceof PlayerJoined) {
+			apply((PlayerJoined) event);
+		} else if (event instanceof GameStarted) {
+			apply((GameStarted) event);
+		} else if (event instanceof NewMove) {
+			apply((NewMove) event);
+		} else if (event instanceof GameEnded) {
+			apply((GameEnded) event);
+		}
+	}
+
+	private void apply(PlayerJoined event) {
+		var userId = new UserId(event.userId());
+		if (event.symbol().equals(TTTSymbol.X.toString())) {
+			playerCross = Optional.of(userId);
+		} else {
+			playerCircle = Optional.of(userId);
+		}
+	}
+
+	private void apply(GameStarted event) {
+		state = GameState.STARTED;
+		currentTurn = playerCross;
+	}
+
+	private void apply(NewMove event) {
+		try {
+			var symbol = event.symbol().equals(TTTSymbol.X.toString()) ? TTTSymbol.X : TTTSymbol.O;
+			board.newMove(symbol, event.x(), event.y());
+			currentTurn = (symbol.equals(TTTSymbol.X)) ? playerCircle : playerCross;
+		} catch (InvalidMoveException ex) {
+			throw new IllegalStateException("Invalid event stream for game " + id, ex);
+		}
+	}
+
+	private void apply(GameEnded event) {
+		state = GameState.FINISHED;
+		if (event.winner().isPresent()) {
+			winner = Optional.of(new UserId(event.winner().get()));
+		} else {
+			winner = Optional.empty();
+		}
+	}
+
 	private void notifyGameEvent(GameEvent ev) {
 		for (var o: observers) {
 			logger.info("notify game event " + ev + " to " + o + "...");

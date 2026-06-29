@@ -57,10 +57,9 @@ public class GameServiceImpl implements GameService {
 		if (gameRepository.isPresent(gameId)) {
 			throw new GameAlreadyPresentException();
 		}
-		gameRepository.addGame(game);
-		
 		var obs = observerFactory.makeNewGameObserver(gameId);
 		game.addGameObserver(obs);
+		gameRepository.addGame(game);
 		
 	}
 	
@@ -88,11 +87,12 @@ public class GameServiceImpl implements GameService {
 	public PlayerSession joinGame(UserId userId, String gameId, TTTSymbol symbol) throws InvalidJoinException  {
 		logger.log(Level.INFO, "JoinGame - user: " + userId + " game: " + gameId + " symbol " + symbol);
 		var game = gameRepository.getGame(gameId);
+		game.addGameObserver(observerFactory.makeNewGameObserver(gameId));
 		game.joinGame(userId, symbol);	
 		playerSessionCount++;
 		
 		var playerSessionId = "player-session-" + playerSessionCount;
-		var ps = new PlayerSession(playerSessionId, userId, game, symbol);		
+		var ps = new PlayerSession(playerSessionId, userId, gameId, symbol, gameRepository, observerFactory);		
 		// ps.bindPlayerSessionEventNotifier(notifier);
 		playerSessionRepository.addSession(ps);
 		// game.addGameObserver(ps);
@@ -104,6 +104,7 @@ public class GameServiceImpl implements GameService {
 		if (game.isReadyToStart()) {
 			game.startGame();
 		}
+		gameRepository.save(game);
 		return ps;
 	}
 	

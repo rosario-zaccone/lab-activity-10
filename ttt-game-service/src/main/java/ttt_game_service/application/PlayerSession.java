@@ -16,19 +16,27 @@ public class PlayerSession /* implements GameObserver */ {
 
 	static Logger logger = Logger.getLogger("[Player Session]");
 	private UserId userId;
-	private Game game;
+	private String gameId;
+	private GameRepository gameRepository;
+	private GameObserverFactory observerFactory;
 	private TTTSymbol symbol;
 	private String playerSessionId;
 	
-	public PlayerSession(String playerSessionId, UserId userId, Game game, TTTSymbol symbol) {
+	public PlayerSession(String playerSessionId, UserId userId, String gameId, TTTSymbol symbol,
+			GameRepository gameRepository, GameObserverFactory observerFactory) {
 		this.userId = userId;
-		this.game = game;
+		this.gameId = gameId;
 		this.symbol = symbol;
 		this.playerSessionId = playerSessionId;
+		this.gameRepository = gameRepository;
+		this.observerFactory = observerFactory;
 	}
 		
 	public void makeMove(int x, int y) throws InvalidMoveException {
+		var game = gameRepository.getGame(gameId);
+		game.addGameObserver(observerFactory.makeNewGameObserver(gameId));
 		game.makeAmove(userId, x, y);
+		gameRepository.save(game);
 	}
 	
 	public TTTSymbol getSymbol() {
@@ -36,7 +44,7 @@ public class PlayerSession /* implements GameObserver */ {
 	}
 	
 	public String getGameId() {
-		return game.getId();
+		return gameId;
 	}
 	
 	public String getId() {
@@ -44,6 +52,6 @@ public class PlayerSession /* implements GameObserver */ {
 	}
 
 	private void log(String msg) {
-		System.out.println("[ player " + userId.id() + " in game " + game.getId() + " ] " + msg);
+		System.out.println("[ player " + userId.id() + " in game " + gameId + " ] " + msg);
 	}
 }

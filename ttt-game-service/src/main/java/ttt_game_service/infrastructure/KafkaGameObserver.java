@@ -28,7 +28,14 @@ public class KafkaGameObserver implements GameObserver {
 	
 	private JsonObject toJson(GameEvent ev) {
 		JsonObject obj = new JsonObject();
-		if (ev instanceof GameStarted) {
+		if (ev instanceof GameCreated) {
+			obj.put("event", "game-created");
+		} else if (ev instanceof PlayerJoined) {
+			var evt = (PlayerJoined) ev;
+			obj.put("event", "player-joined");
+			obj.put("userId", evt.userId());
+			obj.put("symbol", evt.symbol());
+		} else if (ev instanceof GameStarted) {
 			obj.put("event", "game-started");			
 		} else if (ev instanceof GameEnded) {
 			obj.put("event", "game-ended");

@@ -45,7 +45,7 @@ v1.1.0-20251130
         - about the events of game identified by `<gameId>`
           - `game-<gameId>-events` (output)
     - adding an event-driven controller
-    - [TODO] implementing event sourcing
+    - implementing event sourcing in `ttt-game-service` with an in-memory event store
   - [TTT Game Service AsyncAPI spec](./ttt-game-service/doc/async-api-spec.yaml)
     - including some main fields
     - verified with [AsyncAPI Studio](https://studio.asyncapi.com/)

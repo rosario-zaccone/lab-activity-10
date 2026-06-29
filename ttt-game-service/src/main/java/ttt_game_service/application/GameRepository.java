@@ -13,6 +13,8 @@ import ttt_game_service.domain.Game;
 public interface GameRepository extends Repository {
 
 	void addGame(Game game);
+
+	void save(Game game);
 	
 	boolean isPresent(String gameId);
 	
